@@ -1,0 +1,9 @@
+order_id,customer_name,amount,currency,updated_at,status
+1,Alice Smith,120.50,usd,2026-10-01T10:00:00,completed
+2,Bob Jones,75.00,USD,2026-10-02T11:30:00,completed
+3,  Carol White ,200.00,USD,2026-10-03T09:15:00,completed
+4,David Brown,-10.00,USD,2026-10-04T14:00:00,completed
+5,Eve Davis,50.00,USD,2026-10-05T16:45:00,
+6,Bob Jones,75.00,USD,2026-10-02T11:30:00,completed
+7,,90.00,USD,2026-10-06T10:00:00,completed
+8,Frank Miller,130.00,EUR,2026-10-07T12:00:00,completed
