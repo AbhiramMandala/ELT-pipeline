@@ -1,0 +1,33 @@
+# Local PostgreSQL for the ETL pipeline (optional — the default SQLite
+# backend needs nothing). Provides a throwaway server with known
+# credentials; the repo's own Postgres 18 on 5433 (if any) is left alone.
+# NOTE: not executed in this environment (Docker daemon unavailable here).
+#
+#   docker compose up -d postgres
+#   $env:ETL_DB_BACKEND='postgres'; $env:ETL_PG_PORT='5434'
+#   $env:ETL_PG_DBNAME='etl'; $env:ETL_PG_USER='etl'; $env:ETL_PG_PASSWORD='etl'
+#   python -m unittest discover -s tests
+#   docker compose down -v  # drops the pgdata volume
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: etl-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: etl
+      POSTGRES_USER: etl
+      POSTGRES_PASSWORD: ${ETL_PG_PASSWORD:-etl}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etl -d etl"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

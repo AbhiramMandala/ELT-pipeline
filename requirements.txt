@@ -1,5 +1,5 @@
-# Airflow is the only non-stdlib dep; pipeline + tests run on stdlib alone.
-# Upper bound guards against a future major API break; verified API surface
-# (schedule=, max_active_runs, default_args execution_timeout,
-# airflow.operators.python.PythonOperator) is stable across 2.9–3.x.
+# Pipeline runtime: stdlib only on SQLite; psycopg needed for PostgreSQL.
+# Airflow is needed only to schedule the DAG (use Linux/Docker/WSL2 —
+# Airflow has no Windows support).
+psycopg[binary]>=3.1
 apache-airflow>=2.9,<4

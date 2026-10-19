@@ -47,14 +47,21 @@ class _Op:
 
 
 def _load_dag():
-    for name, mod in [("airflow", types.ModuleType("airflow")),
-                      ("airflow.operators", types.ModuleType("airflow.operators")),
-                      ("airflow.operators.python",
-                       types.ModuleType("airflow.operators.python"))]:
-        mod.DAG = _DAG
+    mods = {"airflow": types.ModuleType("airflow"),
+            "airflow.operators": types.ModuleType("airflow.operators"),
+            "airflow.operators.python": types.ModuleType("airflow.operators.python"),
+            "airflow.providers": types.ModuleType("airflow.providers"),
+            "airflow.providers.standard": types.ModuleType("airflow.providers.standard"),
+            "airflow.providers.standard.operators":
+                types.ModuleType("airflow.providers.standard.operators"),
+            "airflow.providers.standard.operators.python":
+                types.ModuleType("airflow.providers.standard.operators.python")}
+    for name, mod in mods.items():
         sys.modules[name] = mod
     sys.modules["airflow"].DAG = _DAG
     sys.modules["airflow"].__path__ = []
+    # Airflow 3.x primary path (DAG tries this first) + 2.x fallback path
+    sys.modules["airflow.providers.standard.operators.python"].PythonOperator = _Op
     sys.modules["airflow.operators.python"].PythonOperator = _Op
     sys.modules["airflow.operators"].python = sys.modules["airflow.operators.python"]
     for m in list(sys.modules):
@@ -91,11 +98,12 @@ class TestDag(unittest.TestCase):
         self.assertFalse(dag.kwargs["catchup"])
         self.assertEqual(dag.kwargs["max_active_runs"], 1)
         self.assertEqual([t.task_id for t in dag.tasks],
-                         ["extract", "transform_validate", "load"])
+                         ["extract", "transform", "load", "audit"])
         by_id = {t.task_id: t for t in dag.tasks}
-        self.assertEqual(by_id["extract"].downstream, ["transform_validate"])
-        self.assertEqual(by_id["transform_validate"].downstream, ["load"])
-        self.assertEqual(by_id["load"].upstream, ["transform_validate"])
+        self.assertEqual(by_id["extract"].downstream, ["transform"])
+        self.assertEqual(by_id["transform"].downstream, ["load"])
+        self.assertEqual(by_id["load"].downstream, ["audit"])
+        self.assertEqual(by_id["audit"].upstream, ["load"])
         args = dag.kwargs["default_args"]
         self.assertEqual(args["retries"], 3)
         self.assertEqual(args["retry_delay"], timedelta(minutes=5))
@@ -125,9 +133,9 @@ class TestDag(unittest.TestCase):
                 ctx = lambda task: {"ti": FakeTI(store, task),  # noqa: E731
                                     "dag_run": SimpleNamespace(run_id="test-run-1")}
                 self.assertEqual(self.mod.t_extract(**ctx("extract")), 2)
-                self.assertEqual(self.mod.t_transform_validate(
-                    **ctx("transform_validate")), 2)
+                self.assertEqual(self.mod.t_transform(**ctx("transform")), 2)
                 self.mod.t_load(**ctx("load"))
+                self.assertEqual(self.mod.t_audit(**ctx("audit")), "success")
             finally:
                 for k, v in old.items():
                     if v is None:
@@ -139,12 +147,16 @@ class TestDag(unittest.TestCase):
                 audits = list(csv.DictReader(f))
             self.assertEqual(len(audits), 1)
             self.assertEqual(audits[0]["run_id"], "test-run-1")
+            self.assertEqual(audits[0]["task_id"], "audit")
             self.assertEqual(audits[0]["attempt"], "2")
             self.assertEqual(audits[0]["status"], "success")
             self.assertEqual(int(audits[0]["inserted"]), 2)
             import sqlite3
             with sqlite3.connect(os.path.join(tmp.name, "w.db")) as con:
                 self.assertEqual(con.execute("SELECT COUNT(*) FROM orders").fetchone()[0], 2)
+                db_audit = con.execute(
+                    "SELECT run_id,task_id,status,inserted FROM etl_audit").fetchall()
+            self.assertEqual(db_audit, [("test-run-1", "audit", "success", 2)])
         finally:
             try:
                 tmp.cleanup()
